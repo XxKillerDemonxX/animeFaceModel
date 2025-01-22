@@ -1,1 +1,2 @@
 https://pytorch.org/tutorials/beginner/dcgan_faces_tutorial.html
+https://discuss.pytorch.org/t/split-cnn-feature-map-to-patches/106550
