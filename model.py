@@ -66,16 +66,17 @@ class ConvolutionalLayer(nn.Module):
         else:
             self.bias = torch.zeros_like(filter_size, filter_size)
     def __call__(self, x):
-        
+        #x size - batch_size x channel_size x image_width x image_height
+        #kernel size - out_channel_size x filter_size x filter_size
+
         #x should be in form of pixels x pixels x channels x kernel x kernel
-        #would be easier to turn x into pixels x pixels x 27 (if channels is 3 and filter_size is 3) using .flatten and can shape it back for dot product later using .reshape
-        #x = convolve(x, np.ones(self.kernel))@self.weight    <- this doesn't work sadly
 
         #unfold may solve all my problems
         #with a 3x9x9 .unfold with a 3x3 kernel -> 3x9x9x3x3 (with padding) 3 channels, 3x3 patch
 
-        #lets assume i get it in batchsize x 64x64x27
-        # i dont think this is correct -> x = x.reshape(batch_size, image_size, image_size, self.in_channels, self.filter_size, self.filter_size)
+        #transpose the weights and the input
+        unfold = nn.Unfold(kernel_size=(self.filter_size, self.filter_size))
+        output = unfold(x)
 
 
         self.out = x
