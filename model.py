@@ -53,8 +53,9 @@ device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else 
 #out_channels can also represent how many filters (kernels) are in the layer
 #if 64x64 rgb image (3 channels), dimensions would be 64,64,3. in_channels would be 3
 #filter_size is always smaller than image dimensions
-class ConvolutionalLayer:
+class ConvolutionalLayer(nn.Module):
     def __init__(self, in_channels, out_channels, filter_size, stride=1, padding=0, bias=True, padding_mode='zeros', device=None):
+        super(ConvolutionalLayer, self).__init__()
         self.out_channels = out_channels
         self.in_channels = out_channels
         self.filter_size = filter_size
