@@ -62,26 +62,59 @@ class ConvolutionalLayer(nn.Module):
         self.weight = torch.randn(out_channels, in_channels, filter_size, filter_size)
         self.kernel = (filter_size, filter_size)
         if bias==True:
-            self.bias = torch.randn(filter_size, filter_size)
+            self.bias = torch.randn(in_channels, filter_size, filter_size)
         else:
-            self.bias = torch.zeros_like(filter_size, filter_size)
+            self.bias = torch.zeros_like(in_channels, filter_size, filter_size)
     def __call__(self, x):
-        #x size - batch_size x channel_size x image_width x image_height
-        #kernel size - out_channel_size x filter_size x filter_size
-
-        #x should be in form of pixels x pixels x channels x kernel x kernel
-
-        #unfold may solve all my problems
-        #with a 3x9x9 .unfold with a 3x3 kernel -> 3x9x9x3x3 (with padding) 3 channels, 3x3 patch
-
-        #transpose the weights and the input
+        #pad all edges of the matrix with a 0
+        x = torch.nn.functional.pad(x, (1, 1, 1, 1), mode = 'constant', value = 0)
+        #unfold ex. 4x3x9x9 (3x3 kernel) -> 4x27x81
         unfold = nn.Unfold(kernel_size=(self.filter_size, self.filter_size))
-        output = unfold(x)
-
-
+        x = unfold(x)
+        #permute so it flattens the right elements or something, view to make sure its in_channels*filter_size*filter_size, out_channels
+        self.weights = self.weights.permute(1, 2, 3, 0).view(-1, self.out_channels)
+        #transpose the number of patches and elements in patch so that it can match the shape of the weights for matrix mult.
+        x = x.transpose(1, 2)@self.weights + self.bias
+        #reshape so number of patches can go back to image sizes
+        x = x.reshape(batch_size, image_size, image_size, self.out_channels)
         self.out = x
+        return self.out
+    def parameters(self):
+        return [self.weight, self.bias]
+
+class BatchNorm(nn.Module):
+    def __init__(self):
+        super(BatchNorm, self).__init__()
+    def __call__(self):
+        return self.out
     def parameters(self):
         return []
+
+class Generator(nn.Module):
+    def __init__(self):
+        super(Generator, self).__init__()
+    def __call__(self):
+        return self.out
+    def parameters(self):
+        return []
+
+class Discriminator(nn.Module):
+    def __init__(self):
+        super(Discriminator, self).__init__()
+    def __call__(self):
+        return self.out
+    def parameters(self):
+        return []
+
+
+
+
+
+
+
+
+
+
 
 
 
