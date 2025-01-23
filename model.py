@@ -83,12 +83,22 @@ class ConvolutionalLayer(nn.Module):
         return [self.weight, self.bias]
 
 class BatchNorm(nn.Module):
-    def __init__(self):
+    def __init__(self, in_channels, features):
         super(BatchNorm, self).__init__()
-    def __call__(self):
+        self.weight = torch.ones_like(batch_size, features, image_size, image_size)
+        self.bias = torch.zeros_like(batch_size, features, image_size, image_size)
+    def __call__(self, x):
+        #mean of all elements, doesn't mix between channels
+        xmean = x.mean(dim=(0, 2, 3), keepdim = True)
+        #variance of all elements, doesn't mix between channels
+        xvar = x.var(dim=(0, 2, 3), keepdim = True)
+        y = (x - xmean) / xvar
+
+        self.out = self.weight * y + self.bias
+
         return self.out
     def parameters(self):
-        return []
+        return [self.weight, self.bias]
 
 class Generator(nn.Module):
     def __init__(self):
