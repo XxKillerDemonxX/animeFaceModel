@@ -142,7 +142,7 @@ class Discriminator(nn.Module):
 
 
 
-
+#testing, it looks like all the dimensions are done correctly
 discriminator = Discriminator()
 input = torch.randn(batch_size, 3, 64, 64)
 output = discriminator(input)
