@@ -34,17 +34,17 @@ beta1 = 0.5         #beta1 hyperparameter
 ngpu = 1            #number of gpus available
 
 
-# dataset = dset.ImageFolder(root = dataroot,
-#                            transform=transforms.Compose([transforms.Resize(image_size),
-#                                                             transforms.CenterCrop(image_size),
-#                                                             transforms.ToTensor(),
-#                                                             transforms.Normalize((0.5, 0.5,0.5), (0.5, 0.5, 0.5)),
-#                                                         ]))
+dataset = dset.ImageFolder(root = dataroot,
+                           transform=transforms.Compose([transforms.Resize(image_size),
+                                                            transforms.CenterCrop(image_size),
+                                                            transforms.ToTensor(),
+                                                            transforms.Normalize((0.5, 0.5,0.5), (0.5, 0.5, 0.5)),
+                                                        ]))
 
-# dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=workers)
+dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=workers)
 
-# #what device to run on (gpu or cpu)
-# device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
+#what device to run on (gpu or cpu)
+device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
 
 
 
@@ -54,19 +54,21 @@ ngpu = 1            #number of gpus available
 #if 64x64 rgb image (3 channels), dimensions would be 64,64,3. in_channels would be 3
 #filter_size is always smaller than image dimensions
 class ConvolutionalLayer(nn.Module):
-    def __init__(self, in_channels, out_channels, filter_size, stride=1, padding=0, bias=True, padding_mode='zeros', device=None):
+    def __init__(self, in_channels, out_channels, filter_size, stride=1, padding=0, bias=True, padding_mode='zeros', device=device):
         super(ConvolutionalLayer, self).__init__()
         self.out_channels = out_channels
-        self.in_channels = out_channels
+        self.in_channels = in_channels
         self.filter_size = filter_size
         self.stride = stride
         self.padding = padding
-        self.weight = torch.randn(out_channels, in_channels, filter_size, filter_size)
+        self.device = device
+        #initialize weights and biases
+        self.weight = torch.randn(out_channels, in_channels, filter_size, filter_size, device = self.device, requires_grad = True)
         self.kernel = (filter_size, filter_size)
         if bias==True:
-            self.bias = torch.randn(in_channels, filter_size, filter_size)
+            self.bias = torch.randn(in_channels, filter_size, filter_size, device = self.device, requires_grad = True)
         else:
-            self.bias = torch.zeros_like(in_channels, filter_size, filter_size)
+            self.bias = torch.zeros_like(in_channels, filter_size, filter_size, device = self.device, requires_grad = False)
     def __call__(self, x):
 
         image_height = ((x.shape[2] + (self.padding * 2) - self.filter_size) // self.stride) + 1
@@ -78,22 +80,31 @@ class ConvolutionalLayer(nn.Module):
         unfold = nn.Unfold(kernel_size=(self.filter_size, self.filter_size), stride = self.stride)
         x = unfold(x)
         #permute so it flattens the right elements or something, view to make sure its in_channels*filter_size*filter_size, out_channels
-        self.weight = self.weight.permute(1, 2, 3, 0).view(-1, self.out_channels)
+
+        self.weight = self.weight.permute(1, 2, 3, 0)
+
+        self.weight = self.weight.view(-1, self.out_channels)
+
         #transpose the number of patches and elements in patch so that it can match the shape of the weights for matrix mult.
 
         x = x.transpose(1, 2)@self.weight#+ self.bias
         #reshape so number of patches can go back to image sizes
         x = x.reshape(batch_size, self.out_channels, image_height, image_width)
+
+        #make sure weight is back to correct dimensions
+        self.weight = self.weight.view(self.in_channels, self.filter_size, self.filter_size, self.out_channels)
+        self.weight = self.weight.permute(3, 0, 1, 2)
         self.out = x
         return self.out
     def parameters(self):
         return [self.weight, self.bias]
 
 class BatchNorm(nn.Module):
-    def __init__(self, features):
+    def __init__(self, features, device = device):
         super(BatchNorm, self).__init__()
-        self.weight = torch.ones((1, features, 1, 1))
-        self.bias = torch.zeros((1, features, 1, 1))
+        self.device = device
+        self.weight = torch.ones((1, features, 1, 1), device = device, requires_grad = True)
+        self.bias = torch.zeros((1, features, 1, 1), device = device,  requires_grad = False)
     def __call__(self, x):
         #mean of all elements, doesn't mix between channels
         xmean = x.mean(dim=(0, 2, 3), keepdim = True)
@@ -138,20 +149,34 @@ class Discriminator(nn.Module):
         self.out = x
         return self.out
     def parameters(self):
-        return [self.layers]
+        params = []
+        for layer in self.layers:
+            if isinstance(layer, nn.Module):  # If it's a valid module (e.g., ConvolutionalLayer)
+                params += list(layer.parameters())  # Get parameters of the layer
+        return params
 
 
 
-#testing, it looks like all the dimensions are done correctly
+
 discriminator = Discriminator()
-input = torch.randn(batch_size, 3, 64, 64)
-output = discriminator(input)
-print(output.shape)
-sigmoid_x = torch.sigmoid(output)
-print(sigmoid_x.shape)
-print(sigmoid_x)
+labels = torch.ones(128, 1, 1, 1)
+real_labels = 1
+optimizer = torch.optim.Adam(discriminator.parameters(), lr=0.0002)
+if __name__ == '__main__':
+    #training loop
+    for i in range(1):
+        for i, data in enumerate(dataloader, 0):
+            images, label = data
+            images, label = images.to(device), label.to(device)
 
+            optimizer.zero_grad()
+            output = discriminator(images)
+            preloss = torch.sigmoid(output)
+            loss = nn.BCELoss()(preloss, labels)
+            print(loss.data)
+            loss.backward()
 
+            optimizer.step()
 
 
 
