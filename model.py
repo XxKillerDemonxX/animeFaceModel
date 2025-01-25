@@ -99,6 +99,17 @@ class ConvolutionalLayer(nn.Module):
     def parameters(self):
         return [self.weight, self.bias]
 
+class ConvolutionalTransposeLayer(nn.Module):
+    def __init__(self, in_channels, out_channels, filter_size,  stride=1, padding=0, bias=True, padding_mode='zeros', device=device):
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.filter_size = filter_size
+        self.weight = torch.randn()
+    def __call__(self, x):
+
+    def parameters(self):    
+
+
 class BatchNorm(nn.Module):
     def __init__(self, features, device = device):
         super(BatchNorm, self).__init__()
