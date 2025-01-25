@@ -23,4 +23,5 @@ c = nn.ConvTranspose2d(100, 512, 4, 1, 0)
 
 output = c(torch.randn(1, 100, 1, 1))
 print(c.weight.shape)
+print(c.bias.shape)
 print(output.shape)

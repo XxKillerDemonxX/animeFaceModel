@@ -104,11 +104,13 @@ class ConvolutionalTransposeLayer(nn.Module):
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.filter_size = filter_size
-        self.weight = torch.randn()
+        self.weight = torch.randn(in_channels, out_channels, filter_size, filter_size)
+        self.bias = torch.randn(out_channels)
     def __call__(self, x):
-
+        return self.out
+        #nn.torch.upsample might save me here
     def parameters(self):    
-
+        return []
 
 class BatchNorm(nn.Module):
     def __init__(self, features, device = device):
