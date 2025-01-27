@@ -8,6 +8,7 @@ import torch.nn.parallel
 import torch.backends.cudnn as cudnn
 import torch.optim as optim
 import torch.utils.data
+import torch.nn.functional as F
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torchvision.utils as vutils
@@ -107,8 +108,14 @@ class ConvolutionalTransposeLayer(nn.Module):
         self.weight = torch.randn(in_channels, out_channels, filter_size, filter_size)
         self.bias = torch.randn(out_channels)
     def __call__(self, x):
+
+        #might not need to upsample, the weights take care of upsampling apparently
+        x = F.interpolate(x, size=(self.filter_size, self.filter_size), mode = 'bilinear', align_corners = False)
+        self.weight = self.weight.permute(0, 2, 3, 1).reshape(-1, self.in_channels)
+        self.out = x@self.weight.T
+        self.out = self.out.reshape(batch_size, self.filter_size, self.filter_size, self.out_channels)
         return self.out
-        #nn.torch.upsample might save me here
+
     def parameters(self):    
         return []
 

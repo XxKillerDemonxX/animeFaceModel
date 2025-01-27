@@ -1,2 +1,4 @@
 https://pytorch.org/tutorials/beginner/dcgan_faces_tutorial.html
 https://discuss.pytorch.org/t/split-cnn-feature-map-to-patches/106550
+https://d2l.ai/chapter_computer-vision/transposed-conv.html
+https://github.com/loeweX/Custom-ConvLayers-Pytorch/blob/main/src/ConvTranspose2d.py
