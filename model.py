@@ -187,9 +187,15 @@ class Generator(nn.Module):
             #x = 1, 3, 64, 64  
         ]
     def __call__(self):
-        return self.out
+        for layer in self.layers:
+            x = layer(x)
+        self.out = x
     def parameters(self):
-        return []
+        params = []
+        for layer in self.layers:
+            if isinstance(layer, nn.Module):  # If it's a valid module (e.g., ConvolutionalLayer)
+                params += list(layer.parameters())  # Get parameters of the layer
+        return params
 
 class Discriminator(nn.Module):
     def __init__(self):
@@ -219,7 +225,9 @@ class Discriminator(nn.Module):
 
 
 discriminator = Discriminator()
+generator = Generator()
 labels = torch.ones(128, 1, 1, 1)
+fake_labels = torch.zeros(128, 1, 1, 1)
 real_labels = 1
 optimizer = torch.optim.Adam(discriminator.parameters(), lr=0.0002)
 if __name__ == '__main__':
@@ -230,11 +238,25 @@ if __name__ == '__main__':
             images, label = images.to(device), label.to(device)
 
             optimizer.zero_grad()
+
+            #training on real images
             output = discriminator(images)
             preloss = torch.sigmoid(output)
             loss = nn.BCELoss()(preloss, labels)
             print(loss.data)
-            loss.backward()
+            #loss.backward()
+
+            #use generator to create fake images
+            noise = torch.randn(batch_size, nz, 1, 1, device=device)
+            fake_images = generator(noise).detach() #detach to make sure generator weights are not updated with the discriminator
+
+            #training on fake images
+            outputG = discriminator(fake_images)
+            prelossG = torch.sigmoid(outputG)
+            lossG = nn.BCELoss()(prelossG, fake_labels)
+            lossT = loss + lossG
+            print(lossG.data)
+            lossT.backward()
 
             optimizer.step()
 
