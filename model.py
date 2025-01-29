@@ -55,13 +55,14 @@ device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else 
 #if 64x64 rgb image (3 channels), dimensions would be 64,64,3. in_channels would be 3
 #filter_size is always smaller than image dimensions
 class ConvolutionalLayer(nn.Module):
-    def __init__(self, in_channels, out_channels, filter_size, stride=1, padding=0, bias=True, padding_mode='zeros', device=device):
+    def __init__(self, in_channels, out_channels, filter_size, stride=1, padding=0, dilation = 1, bias=True, padding_mode='zeros', device=device):
         super(ConvolutionalLayer, self).__init__()
         self.out_channels = out_channels
         self.in_channels = in_channels
         self.filter_size = filter_size
         self.stride = stride
         self.padding = padding
+        self.dilation = dilation
         self.device = device
         #initialize weights and biases
         self.weight = torch.randn(out_channels, in_channels, filter_size, filter_size, device = self.device, requires_grad = True)
@@ -101,25 +102,41 @@ class ConvolutionalLayer(nn.Module):
         return [self.weight, self.bias]
 
 class ConvolutionalTransposeLayer(nn.Module):
-    def __init__(self, in_channels, out_channels, filter_size,  stride=1, padding=0, bias=True, padding_mode='zeros', device=device):
+    def __init__(self, in_channels, out_channels, filter_size,  stride=1, padding=0, output_padding = 0, groups = 0, bias=True, dilation = 1, padding_mode='zeros', device=device):
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.filter_size = filter_size
+        self.stride = stride
+        self.padding = padding
+        self.output_padding = output_padding
+        self.groups = groups
+        self.dilation = dilation
+        self.device = device
         self.weight = torch.randn(in_channels, out_channels, filter_size, filter_size)
         self.bias = torch.randn(out_channels)
+    def get_output_size(self, input_size):
+        return (
+            (input_size - 1) * self.stride
+            - 2 * self.padding + self.dilation * (self.filter_size - 1)
+            + self.output_padding
+            + 1
+        )
     def __call__(self, x):
+        self.weight = self.weight.view(self.in_channels, -1)
+        #make a size function to get size after being passed through a transpose convolutional layer
+        output_size = (self.get_output_size(x.shape[2]), self.get_output_size(x.shape[3]))
 
-        #might not need to upsample, the weights take care of upsampling apparently
-        x = F.interpolate(x, size=(self.filter_size, self.filter_size), mode = 'bilinear', align_corners = False)
-        self.weight = self.weight.permute(0, 2, 3, 1).reshape(-1, self.in_channels)
-        self.out = x@self.weight.T
-        self.out = self.out.reshape(batch_size, self.filter_size, self.filter_size, self.out_channels)
+        x = x.view(batch_size, self.in_channels, -1).permute(0, 2, 1)
+        output = x@self.weight + self.bias
+        output = torch.nn.functional.fold(output, output_size, stride = self.stride, kernel_size=self.filter_size, padding=self.padding)
+        self.out = output
         return self.out
 
     def parameters(self):    
         return []
 
 class BatchNorm(nn.Module):
+    
     def __init__(self, features, device = device):
         super(BatchNorm, self).__init__()
         self.device = device
