@@ -112,8 +112,11 @@ class ConvolutionalTransposeLayer(nn.Module):
         self.groups = groups
         self.dilation = dilation
         self.device = device
-        self.weight = torch.randn(in_channels, out_channels, filter_size, filter_size)
-        self.bias = torch.randn(out_channels)
+        self.weight = torch.randn(in_channels, out_channels, filter_size, filter_size, device=device, requires_grad=True)
+        if bias==True:
+            self.bias = torch.randn(out_channels, device = self.device, requires_grad = True)
+        else:
+            self.bias = torch.zeros_like(out_channels, device = self.device, requires_grad = False)
     def get_output_size(self, input_size):
         return (
             (input_size - 1) * self.stride
@@ -127,13 +130,14 @@ class ConvolutionalTransposeLayer(nn.Module):
         output_size = (self.get_output_size(x.shape[2]), self.get_output_size(x.shape[3]))
 
         x = x.view(batch_size, self.in_channels, -1).permute(0, 2, 1)
-        output = x@self.weight + self.bias
+        output = x@self.weight
         output = torch.nn.functional.fold(output, output_size, stride = self.stride, kernel_size=self.filter_size, padding=self.padding)
+        output += self.bias
         self.out = output
         return self.out
 
     def parameters(self):    
-        return []
+        return [self.weight, self.bias]
 
 class BatchNorm(nn.Module):
     
@@ -158,11 +162,30 @@ class LeakyRelu():
     def __call__(self, x):
         leaky_relu = nn.LeakyReLU(negative_slope=0.2)
         return leaky_relu(x)
-
-
+class Relu():
+    def __call__(self, x):
+        relu = nn.ReLU(True)
+        return relu(x)
+class Tanh():
+    def __call__(self, x):
+        tanh = nn.Tanh()
+        return tanh(x)
 class Generator(nn.Module):
     def __init__(self):
         super(Generator, self).__init__()
+        self.layers = [
+            #x = 1, 100, 1, 1
+            ConvolutionalTransposeLayer(nz, ngf*8, kernel_size=4, stride=1, padding=0, bias=False),    BatchNorm(ngf*8), Relu(),
+            #x = 1, 512, 4, 4
+            ConvolutionalTransposeLayer(ngf*8, ngf*4, kernel_size=4, stride=2, padding=1, bias=False), BatchNorm(ngf*4), Relu(),
+            #x = 1, 256, 8, 8
+            ConvolutionalTransposeLayer(ngf*4, ngf*2, kernel_size=4, stride=2, padding=1,bias=False),  BatchNorm(ngf*2), Relu(),
+            #x = 1, 128, 16, 16
+            ConvolutionalTransposeLayer(ngf*2, ngf, kernel_size=4, stride=2, padding=1, bias=False),   BatchNorm(ngf),   Relu(),
+            #x = 1, 64, 32, 32
+            ConvolutionalTransposeLayer(ngf, nc, kernel_szie=4, stride=2, padding=1, bias=False),      BatchNorm(nc),    Tanh()
+            #x = 1, 3, 64, 64  
+        ]
     def __call__(self):
         return self.out
     def parameters(self):

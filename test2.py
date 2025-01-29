@@ -36,5 +36,18 @@ output_tensor = output_tensor@torch.randn(512, 100).T
 output_tensor = output_tensor.reshape(1, 4, 4, 512).permute(0, 3, 1, 2)
 print(output_tensor.shape)
 
-print((torch.randn(1, 1, 1, 100)@torch.randn(100, 512*16)).shape)
-print(torch.matmul(torch.randn(4, 9), torch.randn(16)).shape)
+# print((torch.randn(1, 1, 1, 100)@torch.randn(100, 512*16)).shape)
+# print(torch.matmul(torch.randn(4, 9), torch.randn(16)).shape)
+
+
+x = torch.randn(1, 64, 32, 32)
+x = x.view(1, 64, -1).permute(0, 2, 1)
+weight = torch.randn(64, 3, 4, 4)
+weight = weight.view(64, -1)
+
+out = x@weight
+out = out.permute(0, 2, 1)
+print(out.shape)
+out = torch.nn.functional.fold(out, (64, 64), stride = 2, kernel_size = 4, padding = 1)
+print(out.shape)
+
