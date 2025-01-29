@@ -274,24 +274,3 @@ if __name__ == '__main__':
             optimizerG.step()
 
             
-
-
-
-
-
-
-
-
-
-
-# for data in dataset:
-#     print(data)
-# if __name__ == '__main__':
-#     real_batch = next(iter(dataloader))
-#     plt.figure(figsize=(8,8))
-#     plt.axis("off")
-#     plt.title("Training Images")
-#     plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device), padding=2, normalize=True).cpu(), (1, 2, 0)))
-#     plt.show()
-
-
