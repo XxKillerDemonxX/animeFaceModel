@@ -249,7 +249,8 @@ if __name__ == '__main__':
 
             #use generator to create fake images
             noise = torch.randn(batch_size, nz, 1, 1, device=device)
-            fake_images = generator(noise).detach() #detach to make sure generator weights are not updated with the discriminator
+            fake = generator(noise)
+            fake_images = fake.detach() #detach to make sure generator weights are not updated with the discriminator
 
             #training on fake images
             outputG = discriminator(fake_images)
@@ -264,7 +265,7 @@ if __name__ == '__main__':
 
 
             #training the generator, do another forward pass for the disciminator, but only update weights for generator
-            outputSecond = discriminator(fake_images)
+            outputSecond = discriminator(fake)
             preloss_generator = torch.sigmoid(outputSecond)
             loss_generator = nn.BCELoss()(preloss_generator, labels)
             print(loss_generator.data)
