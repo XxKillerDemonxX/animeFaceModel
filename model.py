@@ -230,6 +230,7 @@ labels = torch.ones(128, 1, 1, 1)
 fake_labels = torch.zeros(128, 1, 1, 1)
 real_labels = 1
 optimizer = torch.optim.Adam(discriminator.parameters(), lr=0.0002)
+optimizerG = torch.optim.Adam(generator.parameters(), lr=0.0002)
 if __name__ == '__main__':
     #training loop
     for i in range(1):
@@ -242,8 +243,8 @@ if __name__ == '__main__':
             #training on real images
             output = discriminator(images)
             preloss = torch.sigmoid(output)
-            loss = nn.BCELoss()(preloss, labels)
-            print(loss.data)
+            loss_real = nn.BCELoss()(preloss, labels)
+            print(loss_real.data)
             #loss.backward()
 
             #use generator to create fake images
@@ -253,13 +254,26 @@ if __name__ == '__main__':
             #training on fake images
             outputG = discriminator(fake_images)
             prelossG = torch.sigmoid(outputG)
-            lossG = nn.BCELoss()(prelossG, fake_labels)
-            lossT = loss + lossG
-            print(lossG.data)
-            lossT.backward()
+            loss_fake = nn.BCELoss()(prelossG, fake_labels)
+            loss_total = loss_real + loss_fake
+            print(loss_fake.data)
 
+            #update discriminator
+            loss_total.backward()
             optimizer.step()
 
+
+            #training the generator, do another forward pass for the disciminator, but only update weights for generator
+            outputSecond = discriminator(fake_images)
+            preloss_generator = torch.sigmoid(outputSecond)
+            loss_generator = nn.BCELoss()(preloss_generator, labels)
+            print(loss_generator.data)
+
+            #update generator
+            loss_generator.backward()
+            optimizerG.step()
+
+            
 
 
 
