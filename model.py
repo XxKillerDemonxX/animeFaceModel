@@ -46,8 +46,8 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle
 
 #what device to run on (gpu or cpu)
 device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
-
-
+print(torch.cuda.is_available())
+#print(torch.__version__)
 
 
 #convolutional layer
@@ -91,6 +91,7 @@ class ConvolutionalLayer(nn.Module):
 
         x = x.transpose(1, 2)@self.weight#+ self.bias
         #reshape so number of patches can go back to image sizes
+        #print(x.shape)
         x = x.reshape(batch_size, self.out_channels, image_height, image_width)
 
         #make sure weight is back to correct dimensions
@@ -116,7 +117,7 @@ class ConvolutionalTransposeLayer(nn.Module):
         if bias==True:
             self.bias = torch.randn(out_channels, device = self.device, requires_grad = True)
         else:
-            self.bias = torch.zeros_like(out_channels, device = self.device, requires_grad = False)
+            self.bias = torch.zeros(out_channels, device = self.device, requires_grad = False)
     def get_output_size(self, input_size):
         return (
             (input_size - 1) * self.stride
@@ -131,9 +132,14 @@ class ConvolutionalTransposeLayer(nn.Module):
 
         x = x.view(batch_size, self.in_channels, -1).permute(0, 2, 1)
         output = x@self.weight
+        output = output.permute(0, 2, 1)
         output = torch.nn.functional.fold(output, output_size, stride = self.stride, kernel_size=self.filter_size, padding=self.padding)
-        output += self.bias
+        #output += self.bias
         self.out = output
+
+        #return weight to orginal dimensions
+        self.weight = self.weight.reshape(self.in_channels, self.out_channels, self.filter_size, self.filter_size)
+        #print(self.out.shape)
         return self.out
 
     def parameters(self):    
@@ -175,21 +181,22 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
         self.layers = [
             #x = 1, 100, 1, 1
-            ConvolutionalTransposeLayer(nz, ngf*8, kernel_size=4, stride=1, padding=0, bias=False),    BatchNorm(ngf*8), Relu(),
+            ConvolutionalTransposeLayer(nz, ngf*8, filter_size=4, stride=1, padding=0, bias=False, device=device),    BatchNorm(ngf*8), Relu(),
             #x = 1, 512, 4, 4
-            ConvolutionalTransposeLayer(ngf*8, ngf*4, kernel_size=4, stride=2, padding=1, bias=False), BatchNorm(ngf*4), Relu(),
+            ConvolutionalTransposeLayer(ngf*8, ngf*4, filter_size=4, stride=2, padding=1, bias=False, device=device), BatchNorm(ngf*4), Relu(),
             #x = 1, 256, 8, 8
-            ConvolutionalTransposeLayer(ngf*4, ngf*2, kernel_size=4, stride=2, padding=1,bias=False),  BatchNorm(ngf*2), Relu(),
+            ConvolutionalTransposeLayer(ngf*4, ngf*2, filter_size=4, stride=2, padding=1,bias=False, device=device),  BatchNorm(ngf*2), Relu(),
             #x = 1, 128, 16, 16
-            ConvolutionalTransposeLayer(ngf*2, ngf, kernel_size=4, stride=2, padding=1, bias=False),   BatchNorm(ngf),   Relu(),
+            ConvolutionalTransposeLayer(ngf*2, ngf, filter_size=4, stride=2, padding=1, bias=False, device=device),   BatchNorm(ngf),   Relu(),
             #x = 1, 64, 32, 32
-            ConvolutionalTransposeLayer(ngf, nc, kernel_szie=4, stride=2, padding=1, bias=False),      BatchNorm(nc),    Tanh()
+            ConvolutionalTransposeLayer(ngf, nc, filter_size=4, stride=2, padding=1, bias=False, device=device),      BatchNorm(nc),    Tanh()
             #x = 1, 3, 64, 64  
         ]
-    def __call__(self):
+    def __call__(self, x):
         for layer in self.layers:
             x = layer(x)
         self.out = x
+        return self.out
     def parameters(self):
         params = []
         for layer in self.layers:
@@ -202,11 +209,11 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
         self.layers = [
             #3 in_channels, 4 out_channels, 3 filter_size
-            ConvolutionalLayer(nc, ndf, 4, 2, 1), LeakyRelu(),
-            ConvolutionalLayer(ndf, ndf*2, 4, 2, 1),   BatchNorm(ndf*2), LeakyRelu(),
-            ConvolutionalLayer(ndf*2, ndf*4, 4, 2, 1), BatchNorm(ndf*4), LeakyRelu(),
-            ConvolutionalLayer(ndf*4, ndf*8, 4, 2, 1), BatchNorm(ndf*8), LeakyRelu(),
-            ConvolutionalLayer(ndf*8, 1, 4, 1, 0)
+            ConvolutionalLayer(nc, ndf, 4, 2, 1, device=device), LeakyRelu(),
+            ConvolutionalLayer(ndf, ndf*2, 4, 2, 1, device=device),   BatchNorm(ndf*2), LeakyRelu(),
+            ConvolutionalLayer(ndf*2, ndf*4, 4, 2, 1, device=device), BatchNorm(ndf*4), LeakyRelu(),
+            ConvolutionalLayer(ndf*4, ndf*8, 4, 2, 1, device=device), BatchNorm(ndf*8), LeakyRelu(),
+            ConvolutionalLayer(ndf*8, 1, 4, 1, 0, device=device)
 
         ]
     def __call__(self, x):
@@ -226,16 +233,22 @@ class Discriminator(nn.Module):
 
 discriminator = Discriminator()
 generator = Generator()
-labels = torch.ones(128, 1, 1, 1)
-fake_labels = torch.zeros(128, 1, 1, 1)
+discriminator.to(device)
+generator.to(device)
+
+labels = torch.ones(128, 1, 1, 1, device=device)
+fake_labels = torch.zeros(128, 1, 1, 1, device=device)
 real_labels = 1
 optimizer = torch.optim.Adam(discriminator.parameters(), lr=0.0002)
 optimizerG = torch.optim.Adam(generator.parameters(), lr=0.0002)
 if __name__ == '__main__':
     #training loop
-    for i in range(1):
+    for i in range(3):
         for i, data in enumerate(dataloader, 0):
             images, label = data
+            if images.size(0) < batch_size:
+                continue
+
             images, label = images.to(device), label.to(device)
 
             optimizer.zero_grad()
@@ -244,12 +257,13 @@ if __name__ == '__main__':
             output = discriminator(images)
             preloss = torch.sigmoid(output)
             loss_real = nn.BCELoss()(preloss, labels)
-            print(loss_real.data)
+            #print(loss_real.data)
             #loss.backward()
 
             #use generator to create fake images
             noise = torch.randn(batch_size, nz, 1, 1, device=device)
             fake = generator(noise)
+            #print(fake.shape)
             fake_images = fake.detach() #detach to make sure generator weights are not updated with the discriminator
 
             #training on fake images
@@ -257,9 +271,10 @@ if __name__ == '__main__':
             prelossG = torch.sigmoid(outputG)
             loss_fake = nn.BCELoss()(prelossG, fake_labels)
             loss_total = loss_real + loss_fake
-            print(loss_fake.data)
+            #print(loss_fake.data)
 
             #update discriminator
+            print(loss_total.data)
             loss_total.backward()
             optimizer.step()
 
@@ -268,10 +283,18 @@ if __name__ == '__main__':
             outputSecond = discriminator(fake)
             preloss_generator = torch.sigmoid(outputSecond)
             loss_generator = nn.BCELoss()(preloss_generator, labels)
-            print(loss_generator.data)
+            #print(loss_generator.data)
 
             #update generator
             loss_generator.backward()
             optimizerG.step()
+    print("done")
 
-            
+    matrixI = torch.randn(128, nz, 1, 1, device=device)
+    fake = generator(matrixI)
+    image_tensor = fake[0]
+    image_np = image_tensor.permute(1, 2, 0).detach().cpu().numpy()
+    image_np = (image_np + 1) / 2
+    plt.imshow(image_np)
+    plt.axis('off')  # Hide axes
+    plt.show()
