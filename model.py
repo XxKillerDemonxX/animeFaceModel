@@ -50,6 +50,11 @@ print(torch.cuda.is_available())
 #print(torch.__version__)
 
 
+
+def add_noise(images, noise_std=0.1):
+    return images + noise_std * torch.randn_like(images)
+
+
 #convolutional layer
 #out_channels can also represent how many filters (kernels) are in the layer
 #if 64x64 rgb image (3 channels), dimensions would be 64,64,3. in_channels would be 3
@@ -65,7 +70,8 @@ class ConvolutionalLayer(nn.Module):
         self.dilation = dilation
         self.device = device
         #initialize weights and biases
-        self.weight = torch.randn(out_channels, in_channels, filter_size, filter_size, device = self.device, requires_grad = True)
+        self.weight = torch.randn(out_channels, in_channels, filter_size, filter_size, device = self.device) * ((2/in_channels) * 0.2)
+        self.weight.requires_grad_()
         self.kernel = (filter_size, filter_size)
         if bias==True:
             self.bias = torch.randn(in_channels, filter_size, filter_size, device = self.device, requires_grad = True)
@@ -79,7 +85,11 @@ class ConvolutionalLayer(nn.Module):
         #pad all edges of the matrix with a 0
         x = torch.nn.functional.pad(x, (self.padding, self.padding, self.padding, self.padding), mode = 'constant', value = 0)
         #unfold ex. 4x3x9x9 (3x3 kernel) -> 4x27x81
-        unfold = nn.Unfold(kernel_size=(self.filter_size, self.filter_size), stride = self.stride)
+        unfold = nn.Unfold(
+            kernel_size=(self.filter_size, self.filter_size), 
+            stride = self.stride
+        )
+
         x = unfold(x)
         #permute so it flattens the right elements or something, view to make sure its in_channels*filter_size*filter_size, out_channels
 
@@ -89,9 +99,11 @@ class ConvolutionalLayer(nn.Module):
 
         #transpose the number of patches and elements in patch so that it can match the shape of the weights for matrix mult.
 
-        x = x.transpose(1, 2)@self.weight#+ self.bias
+        x = x.permute(0, 2, 1)@self.weight#+ self.bias
+        
         #reshape so number of patches can go back to image sizes
         #print(x.shape)
+        x = x.permute(0, 2, 1)
         x = x.reshape(batch_size, self.out_channels, image_height, image_width)
 
         #make sure weight is back to correct dimensions
@@ -113,7 +125,8 @@ class ConvolutionalTransposeLayer(nn.Module):
         self.groups = groups
         self.dilation = dilation
         self.device = device
-        self.weight = torch.randn(in_channels, out_channels, filter_size, filter_size, device=device, requires_grad=True)
+        self.weight = torch.randn(in_channels, out_channels, filter_size, filter_size, device=device) * (2/in_channels)
+        self.weight.requires_grad_()
         if bias==True:
             self.bias = torch.randn(out_channels, device = self.device, requires_grad = True)
         else:
@@ -151,13 +164,13 @@ class BatchNorm(nn.Module):
         super(BatchNorm, self).__init__()
         self.device = device
         self.weight = torch.ones((1, features, 1, 1), device = device, requires_grad = True)
-        self.bias = torch.zeros((1, features, 1, 1), device = device,  requires_grad = False)
+        self.bias = torch.zeros((1, features, 1, 1), device = device,  requires_grad = True)
     def __call__(self, x):
         #mean of all elements, doesn't mix between channels
         xmean = x.mean(dim=(0, 2, 3), keepdim = True)
         #variance of all elements, doesn't mix between channels
         xvar = x.var(dim=(0, 2, 3), keepdim = True)
-        y = (x - xmean) / xvar
+        y = (x - xmean) / torch.sqrt(xvar + 0.00001)
         self.out = self.weight * y + self.bias
 
         return self.out
@@ -191,6 +204,7 @@ class Generator(nn.Module):
             #x = 1, 64, 32, 32
             ConvolutionalTransposeLayer(ngf, nc, filter_size=4, stride=2, padding=1, bias=False, device=device),      BatchNorm(nc),    Tanh()
             #x = 1, 3, 64, 64  
+
         ]
     def __call__(self, x):
         for layer in self.layers:
@@ -209,11 +223,13 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
         self.layers = [
             #3 in_channels, 4 out_channels, 3 filter_size
-            ConvolutionalLayer(nc, ndf, 4, 2, 1, device=device), LeakyRelu(),
+            ConvolutionalLayer(nc, ndf, 4, 2, 1, device=device),                        LeakyRelu(),
             ConvolutionalLayer(ndf, ndf*2, 4, 2, 1, device=device),   BatchNorm(ndf*2), LeakyRelu(),
             ConvolutionalLayer(ndf*2, ndf*4, 4, 2, 1, device=device), BatchNorm(ndf*4), LeakyRelu(),
             ConvolutionalLayer(ndf*4, ndf*8, 4, 2, 1, device=device), BatchNorm(ndf*8), LeakyRelu(),
             ConvolutionalLayer(ndf*8, 1, 4, 1, 0, device=device)
+
+
 
         ]
     def __call__(self, x):
@@ -229,21 +245,28 @@ class Discriminator(nn.Module):
         return params
 
 
-
-
-discriminator = Discriminator()
-generator = Generator()
-discriminator.to(device)
-generator.to(device)
-
-labels = torch.ones(128, 1, 1, 1, device=device)
-fake_labels = torch.zeros(128, 1, 1, 1, device=device)
-real_labels = 1
-optimizer = torch.optim.Adam(discriminator.parameters(), lr=0.0002)
-optimizerG = torch.optim.Adam(generator.parameters(), lr=0.0002)
 if __name__ == '__main__':
+    img_list = []
+    G_losses = []
+    D_losses = []
+    iterations = []
+    iters = 1
+    discriminator = Discriminator()
+    generator = Generator()
+    discriminator.to(device)
+    generator.to(device)
+
+
+
+
+    labels = torch.ones(128, 1, 1, 1, device=device)
+    fake_labels = torch.zeros(128, 1, 1, 1, device=device)
+    
+    real_labels = 1
+    optimizer = torch.optim.Adam(discriminator.parameters(), lr=0.0001, betas=(0.5, 0.999))
+    optimizerG = torch.optim.Adam(generator.parameters(), lr=0.0002, betas=(0.5, 0.999))
     #training loop
-    for i in range(3):
+    for i in range(5):
         for i, data in enumerate(dataloader, 0):
             images, label = data
             if images.size(0) < batch_size:
@@ -254,10 +277,11 @@ if __name__ == '__main__':
             optimizer.zero_grad()
 
             #training on real images
+            images = add_noise(images)
             output = discriminator(images)
             preloss = torch.sigmoid(output)
-            loss_real = nn.BCELoss()(preloss, labels)
-            #print(loss_real.data)
+            loss_real = F.binary_cross_entropy(preloss, labels)
+            print(f"loss_real: {loss_real.data}")
             #loss.backward()
 
             #use generator to create fake images
@@ -269,12 +293,12 @@ if __name__ == '__main__':
             #training on fake images
             outputG = discriminator(fake_images)
             prelossG = torch.sigmoid(outputG)
-            loss_fake = nn.BCELoss()(prelossG, fake_labels)
+            loss_fake = F.binary_cross_entropy(prelossG, fake_labels)
             loss_total = loss_real + loss_fake
-            #print(loss_fake.data)
+            print(f"loss_fake: {loss_fake.data}")
 
             #update discriminator
-            print(loss_total.data)
+            #print(loss_total.data)
             loss_total.backward()
             optimizer.step()
 
@@ -282,12 +306,31 @@ if __name__ == '__main__':
             #training the generator, do another forward pass for the disciminator, but only update weights for generator
             outputSecond = discriminator(fake)
             preloss_generator = torch.sigmoid(outputSecond)
-            loss_generator = nn.BCELoss()(preloss_generator, labels)
-            #print(loss_generator.data)
+            loss_generator = F.binary_cross_entropy(preloss_generator, labels)
+            print(f"loss_generator: {loss_generator.data}")
 
             #update generator
+            optimizerG.zero_grad()
             loss_generator.backward()
             optimizerG.step()
+            
+            #save losses for plotting
+            G_losses.append(loss_generator)
+            D_losses.append(loss_total)
+            iterations.append(iters)
+            iters += 1
+    D_losses_tensor = torch.tensor(D_losses)
+    G_losses_tensor = torch.tensor(G_losses)
+    plt.plot(iterations, D_losses_tensor.cpu(), label='Discriminator Loss', color='blue', marker='o')
+    plt.plot(iterations, G_losses_tensor.cpu(), label='Generator Loss', color='red', marker='x')
+    
+    plt.xlabel('Iterations')
+    plt.ylabel('Loss')
+    plt.title('Generator and Discriminator Losses over Iterations')
+    plt.legend()
+
+# Display the plot
+    plt.show()
     print("done")
 
     matrixI = torch.randn(128, nz, 1, 1, device=device)
