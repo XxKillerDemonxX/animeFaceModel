@@ -201,6 +201,9 @@ class Generator(nn.Module):
             #x = 1, 128, 16, 16
             ConvolutionalTransposeLayer(ngf*2, ngf, filter_size=4, stride=2, padding=1, bias=False, device=device),   BatchNorm(ngf),   Relu(),
             #x = 1, 64, 32, 32
+            #if i add another layer, i could do
+            #x = 1, 32, 64, 64
+            #then 1, 3, 128, 128 maybe
             ConvolutionalTransposeLayer(ngf, nc, filter_size=4, stride=2, padding=1, bias=False, device=device),      BatchNorm(nc),    Tanh()
             #x = 1, 3, 64, 64  
         ]
@@ -220,12 +223,16 @@ class Discriminator(nn.Module):
     def __init__(self):
         super(Discriminator, self).__init__()
         self.layers = [
-            #3 in_channels, 4 out_channels, 3 filter_size
-            ConvolutionalLayer(nc, ndf, 4, 2, 1, device=device),                        LeakyRelu(),
-            ConvolutionalLayer(ndf, ndf*2, 4, 2, 1, device=device),   BatchNorm(ndf*2), LeakyRelu(),
-            ConvolutionalLayer(ndf*2, ndf*4, 4, 2, 1, device=device), BatchNorm(ndf*4), LeakyRelu(),
-            ConvolutionalLayer(ndf*4, ndf*8, 4, 2, 1, device=device), BatchNorm(ndf*8), LeakyRelu(),
-            ConvolutionalLayer(ndf*8, 1, 4, 1, 0, device=device)
+            #3 in_channels, 4 out_channels, 4 filter_size
+            #nc is 3
+            #ndf if 64
+            #could add another layer
+            #3, 128, 4, 2, 1 change the initial first layer to 128, 64, 4, 2, 1
+            ConvolutionalLayer(nc, ndf, filter_size=4, stride=2, padding=1, device=device),                        LeakyRelu(),
+            ConvolutionalLayer(ndf, ndf*2, filter_size=4, stride=2, padding=1, device=device),   BatchNorm(ndf*2), LeakyRelu(),
+            ConvolutionalLayer(ndf*2, ndf*4, filter_size=4, stride=2, padding=1, device=device), BatchNorm(ndf*4), LeakyRelu(),
+            ConvolutionalLayer(ndf*4, ndf*8, filter_size=4, stride=2, padding=1, device=device), BatchNorm(ndf*8), LeakyRelu(),
+            ConvolutionalLayer(ndf*8, 1, filter_size=4, stride=1, padding=0, device=device)
         ]
     def __call__(self, x):
         for layer in self.layers:
@@ -314,29 +321,20 @@ if __name__ == '__main__':
             D_losses.append(loss_total)
             iterations.append(iters)
             iters += 1
+    #plot and display loss over all iterations
     D_losses_tensor = torch.tensor(D_losses)
     G_losses_tensor = torch.tensor(G_losses)
     plt.plot(iterations, D_losses_tensor.cpu(), label='Discriminator Loss', color='blue', marker='o')
     plt.plot(iterations, G_losses_tensor.cpu(), label='Generator Loss', color='red', marker='x')
-    
     plt.xlabel('Iterations')
     plt.ylabel('Loss')
     plt.title('Generator and Discriminator Losses over Iterations')
     plt.legend()
-
-    # Display the plot
     plt.show()
-    print("done")
 
+    #sample the model
     matrixI = torch.randn(128, nz, 1, 1, device=device)
     fake = generator(matrixI)
-    # image_tensor = fake[0]
-    # image_np = image_tensor.permute(1, 2, 0).detach().cpu().numpy()
-    # image_np = (image_np + 1) / 2
-    # plt.imshow(image_np)
-    # plt.axis('off')  # Hide axes
-    # plt.show()
-    # Create a grid for displaying images
     plt.figure(figsize=(8,8))
     plt.axis("off")
     plt.title("Generated Images")
