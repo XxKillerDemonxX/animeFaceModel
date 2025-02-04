@@ -34,19 +34,11 @@ lr = 0.0002         #learning rate
 beta1 = 0.5         #beta1 hyperparameter
 ngpu = 1            #number of gpus available
 
-#dataset
-dataset = dset.ImageFolder(root = dataroot,
-                           transform=transforms.Compose([transforms.Resize(image_size),
-                                                            transforms.CenterCrop(image_size),
-                                                            transforms.ToTensor(),
-                                                            transforms.Normalize((0.5, 0.5,0.5), (0.5, 0.5, 0.5)),
-                                                        ]))
-#loading the dataset
-dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=workers)
+
 
 #what device to run on (gpu or cpu)
 device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
-print(torch.cuda.is_available())
+#print(torch.cuda.is_available())
 #print(torch.__version__)
 
 
@@ -201,9 +193,6 @@ class Generator(nn.Module):
             #x = 1, 128, 16, 16
             ConvolutionalTransposeLayer(ngf*2, ngf, filter_size=4, stride=2, padding=1, bias=False, device=device),   BatchNorm(ngf),   Relu(),
             #x = 1, 64, 32, 32
-            #if i add another layer, i could do
-            #x = 1, 32, 64, 64
-            #then 1, 3, 128, 128 maybe
             ConvolutionalTransposeLayer(ngf, nc, filter_size=4, stride=2, padding=1, bias=False, device=device),      BatchNorm(nc),    Tanh()
             #x = 1, 3, 64, 64  
         ]
@@ -225,9 +214,7 @@ class Discriminator(nn.Module):
         self.layers = [
             #3 in_channels, 4 out_channels, 4 filter_size
             #nc is 3
-            #ndf if 64
-            #could add another layer
-            #3, 128, 4, 2, 1 change the initial first layer to 128, 64, 4, 2, 1
+            #ndf is 64
             ConvolutionalLayer(nc, ndf, filter_size=4, stride=2, padding=1, device=device),                        LeakyRelu(),
             ConvolutionalLayer(ndf, ndf*2, filter_size=4, stride=2, padding=1, device=device),   BatchNorm(ndf*2), LeakyRelu(),
             ConvolutionalLayer(ndf*2, ndf*4, filter_size=4, stride=2, padding=1, device=device), BatchNorm(ndf*4), LeakyRelu(),
@@ -247,96 +234,3 @@ class Discriminator(nn.Module):
         return params
 
 
-if __name__ == '__main__':
-    img_list = []
-    G_losses = []
-    D_losses = []
-    iterations = []
-    iters = 1
-    discriminator = Discriminator()
-    generator = Generator()
-    discriminator.to(device)
-    generator.to(device)
-
-
-
-
-    labels = torch.ones(128, 1, 1, 1, device=device)
-    fake_labels = torch.zeros(128, 1, 1, 1, device=device)
-    
-    real_labels = 1
-    optimizer = torch.optim.Adam(discriminator.parameters(), lr=0.0001, betas=(0.5, 0.999))
-    optimizerG = torch.optim.Adam(generator.parameters(), lr=0.0002, betas=(0.5, 0.999))
-    #training loop
-    for i in range(10):
-        for i, data in enumerate(dataloader, 0):
-            images, label = data
-            if images.size(0) < batch_size:
-                continue
-
-            images, label = images.to(device), label.to(device)
-
-            optimizer.zero_grad()
-
-            #training on real images
-            images = add_noise(images)
-            output = discriminator(images)
-            preloss = torch.sigmoid(output)
-            loss_real = F.binary_cross_entropy(preloss, labels)
-            print(f"loss_real: {loss_real.data}")
-            #loss.backward()
-
-            #use generator to create fake images
-            noise = torch.randn(batch_size, nz, 1, 1, device=device)
-            fake = generator(noise)
-            #print(fake.shape)
-            fake_images = fake.detach() #detach to make sure generator weights are not updated with the discriminator
-
-            #training on fake images
-            outputG = discriminator(fake_images)
-            prelossG = torch.sigmoid(outputG)
-            loss_fake = F.binary_cross_entropy(prelossG, fake_labels)
-            loss_total = loss_real + loss_fake
-            print(f"loss_fake: {loss_fake.data}")
-
-            #update discriminator
-            #print(loss_total.data)
-            loss_total.backward()
-            optimizer.step()
-
-
-            #training the generator, do another forward pass for the disciminator, but only update weights for generator
-            outputSecond = discriminator(fake)
-            preloss_generator = torch.sigmoid(outputSecond)
-            loss_generator = F.binary_cross_entropy(preloss_generator, labels)
-            print(f"loss_generator: {loss_generator.data}")
-
-            #update generator
-            optimizerG.zero_grad()
-            loss_generator.backward()
-            optimizerG.step()
-            
-            #save losses for plotting
-            G_losses.append(loss_generator)
-            D_losses.append(loss_total)
-            iterations.append(iters)
-            iters += 1
-    #plot and display loss over all iterations
-    D_losses_tensor = torch.tensor(D_losses)
-    G_losses_tensor = torch.tensor(G_losses)
-    plt.plot(iterations, D_losses_tensor.cpu(), label='Discriminator Loss', color='blue', marker='o')
-    plt.plot(iterations, G_losses_tensor.cpu(), label='Generator Loss', color='red', marker='x')
-    plt.xlabel('Iterations')
-    plt.ylabel('Loss')
-    plt.title('Generator and Discriminator Losses over Iterations')
-    plt.legend()
-    plt.show()
-
-    #sample the model
-    matrixI = torch.randn(128, nz, 1, 1, device=device)
-    fake = generator(matrixI)
-    plt.figure(figsize=(8,8))
-    plt.axis("off")
-    plt.title("Generated Images")
-    plt.imshow(np.transpose(vutils.make_grid(fake.to(device)[:64], padding=2, normalize=True).cpu(),(1,2,0)))
-    plt.show()
