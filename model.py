@@ -19,8 +19,8 @@ from IPython.display import HTML
 from scipy.signal import convolve
 
 
+#----Should make these not global----
 manual_seed = 999
-
 dataroot = "Input"
 workers = 2
 batch_size = 128    #batch size that will be used in training
